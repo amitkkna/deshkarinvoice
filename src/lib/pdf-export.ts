@@ -57,19 +57,51 @@ const COLUMN_LIMITS = {
   amount: 12
 };
 
-export function generateInvoicePDF(invoice: Invoice): void {
+// Function to calculate optimal spacing based on content
+function calculateOptimalSpacing(invoice: Invoice) {
+  const hasDisplayName = invoice.displayName && invoice.displayName.trim() !== '';
+  const hasPODetails = (invoice.poNumber && invoice.poNumber.trim() !== '') ||
+                      (invoice.poDate && invoice.poDate.trim() !== '');
+  const itemCount = invoice.items.length;
+
+  // Calculate required space based on content
+  const baseSpacing = {
+    headerHeight: 20, // Reduced from 25
+    titleSpacing: 8,  // Reduced from 15
+    detailsHeight: hasDisplayName || hasPODetails ? 35 : 25, // Dynamic height
+    tableHeaderHeight: 12,
+    rowHeight: 8,
+    totalsHeight: 25,
+    termsHeight: 20,
+    signatureHeight: 15,
+    footerHeight: 20 // Reduced from 25
+  };
+
+  return {
+    ...baseSpacing,
+    canFitOnePage: itemCount <= 15, // Estimate if content can fit on one page
+    compactMode: itemCount <= 10 && !hasDisplayName // Ultra-compact for small invoices
+  };
+}
+
+// Export function with compact mode option
+export function generateInvoicePDF(invoice: Invoice, compactMode: boolean = false): void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
-  const margin = 10;
+  const margin = compactMode ? 8 : 10; // Smaller margins in compact mode
+
+  // Calculate optimal spacing
+  const spacing = calculateOptimalSpacing(invoice);
+  const useCompactLayout = compactMode || spacing.compactMode;
 
   // Page management variables (removed unused variables)
 
   // Function to add header and footer to any page
   function addHeaderFooter(pageNumber: number) {
-    // Header Image Section - Outside invoice boundary
-    const headerHeight = 25;
-    const headerMargin = 5;
+    // Header Image Section - Outside invoice boundary (dynamic sizing)
+    const headerHeight = useCompactLayout ? spacing.headerHeight : 25;
+    const headerMargin = useCompactLayout ? 3 : 5;
 
     // Load and add header image
     const headerImg = new Image();
@@ -293,30 +325,32 @@ export function generateInvoicePDF(invoice: Invoice): void {
   addHeaderFooter(1);
 
   function generateRestOfPDF() {
-    // Invoice boundary starts below header
-    const headerHeight = 25;
-    const headerMargin = 5;
-    const invoiceStartY = headerHeight + headerMargin + 10;
+    // Invoice boundary starts below header (dynamic spacing)
+    const headerHeight = useCompactLayout ? spacing.headerHeight : 25;
+    const headerMargin = useCompactLayout ? 3 : 5;
+    const invoiceStartY = headerHeight + headerMargin + (useCompactLayout ? 5 : 10);
 
     // Calculate available space for content (excluding header and footer)
-    const footerSpace = 50; // Space reserved for footer
+    const footerSpace = useCompactLayout ? 30 : 50; // Reduced footer space in compact mode
     const availableHeight = pageHeight - invoiceStartY - footerSpace;
 
     // Draw main invoice border for first page
     doc.rect(margin, invoiceStartY, pageWidth - (margin * 2), availableHeight);
 
-    // Tax Invoice Title (centered at top of invoice)
+    // Tax Invoice Title (centered at top of invoice) - dynamic sizing
     doc.setFillColor(0, 0, 0); // Reset to black
-    doc.setFontSize(14);
+    doc.setFontSize(useCompactLayout ? 12 : 14);
     doc.setFont('helvetica', 'bold');
-    doc.text('Tax Invoice', pageWidth / 2, invoiceStartY + 15, { align: 'center' });
+    const titleY = invoiceStartY + (useCompactLayout ? spacing.titleSpacing : 15);
+    doc.text('Tax Invoice', pageWidth / 2, titleY, { align: 'center' });
 
     // Draw horizontal line under title
-    doc.line(margin + 2, invoiceStartY + 19, pageWidth - margin - 2, invoiceStartY + 19);
+    const lineY = titleY + (useCompactLayout ? 3 : 4);
+    doc.line(margin + 2, lineY, pageWidth - margin - 2, lineY);
 
-    // Customer and PO Details Section with proper boxing
-    const detailsY = invoiceStartY + 24;
-    const detailsHeight = 45;
+    // Customer and PO Details Section with dynamic height
+    const detailsY = lineY + (useCompactLayout ? 4 : 5);
+    const detailsHeight = spacing.detailsHeight;
 
   // Draw main box for customer and PO details
   doc.rect(margin + 2, detailsY, pageWidth - (margin * 2) - 4, detailsHeight);
@@ -638,6 +672,12 @@ export function generateInvoicePDF(invoice: Invoice): void {
 
     doc.rect(margin, invoiceStartY, pageWidth - (margin * 2), availableHeight);
 
+    // Add explicit bottom border line for continuation page
+    const continuationBottomY = invoiceStartY + availableHeight;
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(margin, continuationBottomY, pageWidth - margin, continuationBottomY);
+
     // Add B/F text
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
@@ -756,6 +796,12 @@ export function generateInvoicePDF(invoice: Invoice): void {
 
       doc.rect(margin, invoiceStartY, pageWidth - (margin * 2), availableHeight);
 
+      // Add explicit bottom border line for additional continuation pages
+      const additionalBottomY = invoiceStartY + availableHeight;
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      doc.line(margin, additionalBottomY, pageWidth - margin, additionalBottomY);
+
       // Add "B/F" text at the top of continuation pages
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
@@ -799,6 +845,12 @@ export function generateInvoicePDF(invoice: Invoice): void {
   doc.setFontSize(7);
     doc.text('For, DESHKAR ADVERTISING', pageWidth - 60, termsY + 10);
     doc.text('Authorised Signatory', pageWidth - 60, termsY + 25);
+
+    // Draw explicit bottom border line to close the invoice boundary
+    const invoiceBottomY = invoiceStartY + availableHeight;
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(margin, invoiceBottomY, pageWidth - margin, invoiceBottomY);
 
     // Footer Section - Outside invoice boundary at bottom
     const footerHeight = 25;
@@ -889,6 +941,22 @@ export function generateInvoicePDF(invoice: Invoice): void {
   }
 }
 
+// Compact PDF generation function - optimized for single page
+export function generateCompactInvoicePDF(invoice: Invoice): void {
+  generateInvoicePDF(invoice, true);
+}
 
+// Function to check if invoice can fit on one page
+export function canFitOnOnePage(invoice: Invoice): boolean {
+  const spacing = calculateOptimalSpacing(invoice);
+  return spacing.canFitOnePage;
+}
+
+// Auto-detect best layout function
+export function generateOptimalInvoicePDF(invoice: Invoice): void {
+  const spacing = calculateOptimalSpacing(invoice);
+  const useCompact = spacing.canFitOnePage || spacing.compactMode;
+  generateInvoicePDF(invoice, useCompact);
+}
 
 

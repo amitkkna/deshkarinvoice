@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Plus, Trash2, Download, FileSpreadsheet, Eye, X, Copy } from 'lucide-react';
 import { InvoiceFormData, InvoiceItem, BillingParty, Invoice } from '@/types/invoice';
 import { formatCurrency, numberToWords, calculateGST, getStateFromGSTIN, GST_STATE_CODES } from '@/lib/utils';
-import { generateInvoicePDF } from '@/lib/pdf-export';
+import { generateInvoicePDF, generateCompactInvoicePDF, generateOptimalInvoicePDF, canFitOnOnePage } from '@/lib/pdf-export';
 import { generateInvoiceExcel } from '@/lib/excel-export';
 import InvoicePreview from './InvoicePreview';
 
@@ -106,6 +106,7 @@ export default function InvoiceForm() {
     invoiceNumber: `INV${Date.now().toString().slice(-6)}`,
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: '',
+    creditDays: 0,
     poNumber: '',
     poDate: '',
     displayName: '',
@@ -120,6 +121,32 @@ export default function InvoiceForm() {
 
   const [showPreview, setShowPreview] = useState(false);
   const [previewType, setPreviewType] = useState<'pdf' | 'excel' | null>(null);
+
+  // Function to calculate due date based on invoice date and credit days
+  const calculateDueDate = useCallback((invoiceDate: string, creditDays: number): string => {
+    if (!invoiceDate || creditDays <= 0) return '';
+
+    const date = new Date(invoiceDate);
+    date.setDate(date.getDate() + creditDays);
+    return date.toISOString().split('T')[0];
+  }, []);
+
+  // Update due date when invoice date or credit days change
+  const updateInvoiceDate = useCallback((date: string) => {
+    setFormData(prev => ({
+      ...prev,
+      invoiceDate: date,
+      dueDate: calculateDueDate(date, prev.creditDays)
+    }));
+  }, [calculateDueDate]);
+
+  const updateCreditDays = useCallback((days: number) => {
+    setFormData(prev => ({
+      ...prev,
+      creditDays: days,
+      dueDate: calculateDueDate(prev.invoiceDate, days)
+    }));
+  }, [calculateDueDate]);
 
   const addItem = useCallback(() => {
     const newItem: InvoiceItem = {
@@ -277,6 +304,16 @@ export default function InvoiceForm() {
     generateInvoicePDF(invoice);
   }, [generateInvoice]);
 
+  const handleDownloadCompactPDF = useCallback(() => {
+    const invoice = generateInvoice();
+    generateCompactInvoicePDF(invoice);
+  }, [generateInvoice]);
+
+  const handleDownloadOptimalPDF = useCallback(() => {
+    const invoice = generateInvoice();
+    generateOptimalInvoicePDF(invoice);
+  }, [generateInvoice]);
+
   const handleDownloadExcel = useCallback(() => {
     const invoice = generateInvoice();
     generateInvoiceExcel(invoice);
@@ -302,71 +339,134 @@ export default function InvoiceForm() {
   }, [previewType, handleDownloadPDF, handleDownloadExcel, handleClosePreview]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Elegant Header */}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-6 relative z-10">
+        {/* Enhanced Elegant Header */}
         <div className="text-center mb-10">
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 mb-6">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center mr-4">
-                <FileSpreadsheet className="w-6 h-6 text-white" />
+          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-100/50 p-8 mb-6 transform hover:scale-105 transition-all duration-300">
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mr-6 shadow-lg transform hover:rotate-6 transition-transform duration-300">
+                <FileSpreadsheet className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent animate-gradient">
                   DESHKAR ADVERTISING
                 </h1>
-                <p className="text-gray-500 text-sm font-medium tracking-wide">PROFESSIONAL INVOICE MANAGEMENT</p>
+                <p className="text-gray-500 text-base font-medium tracking-wider mt-2">PROFESSIONAL INVOICE MANAGEMENT SYSTEM</p>
               </div>
             </div>
-            <div className="w-24 h-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mx-auto"></div>
+            <div className="w-32 h-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-full mx-auto animate-pulse"></div>
+
+            {/* Status Indicators */}
+            <div className="flex justify-center space-x-6 mt-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-600 font-medium">System Online</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse delay-300"></div>
+                <span className="text-sm text-gray-600 font-medium">GST Compliant</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse delay-700"></div>
+                <span className="text-sm text-gray-600 font-medium">Multi-format Export</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Elegant Invoice Details */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 mb-8">
-          <div className="flex items-center mb-6">
-            <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mr-4">
-              <FileSpreadsheet className="w-5 h-5 text-white" />
+        {/* Enhanced Invoice Details */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl border border-gray-100/50 p-8 mb-8 transform hover:shadow-2xl transition-all duration-300">
+          <div className="flex items-center mb-8">
+            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl flex items-center justify-center mr-4 shadow-lg transform hover:scale-110 transition-transform duration-300">
+              <FileSpreadsheet className="w-6 h-6 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">Invoice Details</h2>
+            <div>
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Invoice Details</h2>
+              <p className="text-gray-500 text-sm mt-1">Configure your invoice information</p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="group">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Invoice Number</label>
+              <label className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                Invoice Number
+              </label>
               <div className="relative">
                 <input
                   type="text"
                   value={formData.invoiceNumber}
                   onChange={(e) => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
-                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:bg-white transition-all duration-200 group-hover:border-gray-300"
+                  className="w-full px-5 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-500 focus:bg-white focus:shadow-lg transition-all duration-300 group-hover:border-gray-300 group-hover:shadow-md"
                   placeholder="INV-001"
                 />
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               </div>
             </div>
 
             <div className="group">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Invoice Date</label>
+              <label className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                Invoice Date
+              </label>
               <div className="relative">
                 <input
                   type="date"
                   value={formData.invoiceDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
-                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:bg-white transition-all duration-200 group-hover:border-gray-300"
+                  onChange={(e) => updateInvoiceDate(e.target.value)}
+                  className="w-full px-5 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white focus:shadow-lg transition-all duration-300 group-hover:border-gray-300 group-hover:shadow-md"
                 />
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               </div>
             </div>
 
             <div className="group">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Due Date (Optional)</label>
+              <label className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                Credit Days
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={formData.creditDays}
+                  onChange={(e) => updateCreditDays(Number(e.target.value))}
+                  className="w-full px-5 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-orange-500 focus:bg-white focus:shadow-lg transition-all duration-300 group-hover:border-gray-300 group-hover:shadow-md"
+                  placeholder="0"
+                  min="0"
+                  max="365"
+                />
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500/10 to-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+              </div>
+            </div>
+
+            <div className="group">
+              <label className="text-sm font-bold text-gray-700 mb-3 flex items-center">
+                <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                Due Date <span className="text-xs text-gray-500 ml-1">(Auto-calculated)</span>
+              </label>
               <div className="relative">
                 <input
                   type="date"
                   value={formData.dueDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:bg-white transition-all duration-200 group-hover:border-gray-300"
+                  readOnly
+                  className="w-full px-5 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-purple-500 focus:bg-white focus:shadow-lg transition-all duration-300 group-hover:border-gray-300 group-hover:shadow-md cursor-not-allowed"
+                  placeholder="Auto-calculated from credit days"
                 />
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               </div>
+              {formData.creditDays > 0 && formData.dueDate && (
+                <p className="text-xs text-green-600 mt-2 flex items-center">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></span>
+                  Due in {formData.creditDays} days from invoice date
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -637,23 +737,39 @@ export default function InvoiceForm() {
 
         {/* Invoice Items */}
         <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Invoice Items</h2>
-            <div className="flex gap-2">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Invoice Items</h2>
+              <p className="text-gray-500 text-sm mt-1">Add advertising services and hoarding details</p>
+            </div>
+            <div className="flex gap-3">
               <button
                 onClick={addItem}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                className="group relative flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 hover:shadow-xl"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Item
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-400 to-purple-400 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                <Plus className="w-5 h-5 mr-2 transform group-hover:rotate-90 transition-transform duration-300" />
+                <span className="font-semibold">Add Item</span>
               </button>
-
             </div>
           </div>
 
           {formData.items.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No items added yet. Click &quot;Add Item&quot; to get started.
+            <div className="text-center py-16">
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-12 border-2 border-dashed border-gray-300">
+                <div className="w-20 h-20 bg-gradient-to-r from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                  <FileSpreadsheet className="w-10 h-10 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-700 mb-2">No Items Added Yet</h3>
+                <p className="text-gray-500 mb-6">Start building your invoice by adding advertising services and hoarding details</p>
+                <button
+                  onClick={addItem}
+                  className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add Your First Item
+                </button>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -706,18 +822,13 @@ export default function InvoiceForm() {
                         />
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
-                        <select
+                        <input
+                          type="text"
                           value={item.media}
                           onChange={(e) => updateItem(item.id, 'media', e.target.value)}
                           className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">Select</option>
-                          <option value="Billboard">Billboard</option>
-                          <option value="Hoarding">Hoarding</option>
-                          <option value="Banner">Banner</option>
-                          <option value="Digital Display">Digital Display</option>
-                          <option value="Transit">Transit</option>
-                        </select>
+                          placeholder="Media"
+                        />
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
                         <input
@@ -738,17 +849,13 @@ export default function InvoiceForm() {
                         />
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
-                        <select
+                        <input
+                          type="text"
                           value={item.type}
                           onChange={(e) => updateItem(item.id, 'type', e.target.value)}
                           className="w-full px-2 py-1 text-sm border-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">Select</option>
-                          <option value="FIL">FIL</option>
-                          <option value="NIL">NIL</option>
-                          <option value="Standard">Standard</option>
-                          <option value="Premium">Premium</option>
-                        </select>
+                          placeholder="Type"
+                        />
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
                         <input
@@ -867,43 +974,122 @@ export default function InvoiceForm() {
           />
         </div>
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 justify-center">
-          <button
-            onClick={() => handlePreview('pdf')}
-            disabled={formData.items.length === 0 || !formData.billingParty.name}
-            className="flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <Eye className="w-5 h-5 mr-2" />
-            Preview PDF
-          </button>
+        {/* Enhanced Action Buttons */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-xl border border-gray-100/50 p-8 mb-8">
+          <div className="text-center mb-8">
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">Export & Preview</h3>
+            <p className="text-gray-500">Generate professional invoices in multiple formats</p>
+          </div>
 
-          <button
-            onClick={handleDownloadPDF}
-            disabled={formData.items.length === 0 || !formData.billingParty.name}
-            className="flex items-center justify-center px-4 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            Download PDF
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <button
+              onClick={() => handlePreview('pdf')}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-400 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <Eye className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Preview PDF</span>
+            </button>
 
-          <button
-            onClick={() => handlePreview('excel')}
-            disabled={formData.items.length === 0 || !formData.billingParty.name}
-            className="flex items-center justify-center px-4 py-3 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <Eye className="w-5 h-5 mr-2" />
-            Preview Excel
-          </button>
+            <button
+              onClick={handleDownloadOptimalPDF}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-2xl hover:from-purple-700 hover:to-purple-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+              title="Auto-optimized layout for best fit"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-400 to-purple-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <Download className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Smart PDF</span>
+            </button>
 
-          <button
-            onClick={handleDownloadExcel}
-            disabled={formData.items.length === 0 || !formData.billingParty.name}
-            className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <FileSpreadsheet className="w-5 h-5 mr-2" />
-            Download Excel
-          </button>
+            <button
+              onClick={handleDownloadCompactPDF}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-2xl hover:from-orange-700 hover:to-orange-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+              title="Compact layout - fits more content on one page"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-400 to-orange-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <Download className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Compact PDF</span>
+            </button>
+
+            <button
+              onClick={handleDownloadPDF}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-2xl hover:from-red-700 hover:to-red-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+              title="Standard PDF layout"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-red-400 to-red-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <Download className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Standard PDF</span>
+            </button>
+
+            <button
+              onClick={() => handlePreview('excel')}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-2xl hover:from-teal-700 hover:to-teal-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-teal-400 to-teal-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <Eye className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Preview Excel</span>
+            </button>
+
+            <button
+              onClick={handleDownloadExcel}
+              disabled={formData.items.length === 0 || !formData.billingParty.name}
+              className="group relative flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-2xl hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 hover:shadow-xl disabled:hover:scale-100 disabled:hover:shadow-none"
+            >
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-400 to-green-600 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+              <FileSpreadsheet className="w-4 h-4 mr-2 transform group-hover:scale-110 transition-transform duration-300" />
+              <span className="font-semibold text-sm">Download Excel</span>
+            </button>
+          </div>
+
+          {/* Status indicator with layout optimization info */}
+          <div className="mt-6 text-center space-y-2">
+            {formData.items.length === 0 || !formData.billingParty.name ? (
+              <div className="flex items-center justify-center text-amber-600">
+                <div className="w-2 h-2 bg-amber-500 rounded-full mr-2 animate-pulse"></div>
+                <span className="text-sm font-medium">Please add items and billing party details to enable export</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-center text-green-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                  <span className="text-sm font-medium">Ready to export • {formData.items.length} items • {formatCurrency(totals.grandTotal)} total</span>
+                </div>
+
+                {/* Layout optimization indicator */}
+                <div className="flex items-center justify-center space-x-4 text-xs">
+                  {(() => {
+                    const invoice = generateInvoice();
+                    const canFitOne = canFitOnOnePage(invoice);
+                    return (
+                      <>
+                        <div className={`flex items-center ${canFitOne ? 'text-green-600' : 'text-blue-600'}`}>
+                          <div className={`w-1.5 h-1.5 ${canFitOne ? 'bg-green-500' : 'bg-blue-500'} rounded-full mr-1`}></div>
+                          <span>{canFitOne ? 'Can fit on one page' : 'Multi-page layout'}</span>
+                        </div>
+
+                        <div className="flex items-center text-purple-600">
+                          <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1"></div>
+                          <span>Smart PDF recommended</span>
+                        </div>
+
+                        {formData.items.length <= 10 && (
+                          <div className="flex items-center text-orange-600">
+                            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mr-1"></div>
+                            <span>Compact mode available</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Elegant Footer */}
@@ -962,6 +1148,59 @@ export default function InvoiceForm() {
             </div>
           </div>
         )}
+
+        {/* Floating Quick Actions */}
+        <div className="fixed bottom-8 right-8 z-50">
+          <div className="flex flex-col space-y-4">
+            {/* Quick Add Item Button */}
+            <button
+              onClick={addItem}
+              className="group w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center"
+              title="Quick Add Item"
+            >
+              <Plus className="w-6 h-6 transform group-hover:rotate-90 transition-transform duration-300" />
+            </button>
+
+            {/* Quick Export Button */}
+            {formData.items.length > 0 && formData.billingParty.name && (
+              <button
+                onClick={handleDownloadPDF}
+                className="group w-14 h-14 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center animate-bounce"
+                title="Quick Download PDF"
+              >
+                <Download className="w-6 h-6 transform group-hover:scale-110 transition-transform duration-300" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Progress Indicator */}
+        <div className="fixed top-4 right-4 z-40">
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-4">
+            <div className="flex items-center space-x-3">
+              <div className="flex flex-col items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.billingParty.name ? 'bg-green-500' : 'bg-gray-300'} transition-colors duration-300`}>
+                  <span className="text-white text-xs font-bold">1</span>
+                </div>
+                <span className="text-xs text-gray-600 mt-1">Customer</span>
+              </div>
+              <div className={`w-8 h-0.5 ${formData.billingParty.name ? 'bg-green-500' : 'bg-gray-300'} transition-colors duration-300`}></div>
+              <div className="flex flex-col items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.items.length > 0 ? 'bg-green-500' : 'bg-gray-300'} transition-colors duration-300`}>
+                  <span className="text-white text-xs font-bold">2</span>
+                </div>
+                <span className="text-xs text-gray-600 mt-1">Items</span>
+              </div>
+              <div className={`w-8 h-0.5 ${formData.items.length > 0 && formData.billingParty.name ? 'bg-green-500' : 'bg-gray-300'} transition-colors duration-300`}></div>
+              <div className="flex flex-col items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.items.length > 0 && formData.billingParty.name ? 'bg-green-500' : 'bg-gray-300'} transition-colors duration-300`}>
+                  <span className="text-white text-xs font-bold">3</span>
+                </div>
+                <span className="text-xs text-gray-600 mt-1">Export</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

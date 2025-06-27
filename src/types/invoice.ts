@@ -58,6 +58,7 @@ export interface InvoiceFormData {
   invoiceNumber: string;
   invoiceDate: string;
   dueDate: string;
+  creditDays: number;
   poNumber: string;
   poDate: string;
   displayName: string;
